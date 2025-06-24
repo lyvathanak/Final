@@ -1,0 +1,12 @@
+# Use the official Jenkins Long-Term Support image as a base
+FROM jenkins/jenkins:lts-jdk17
+
+# Temporarily switch to the root user to have permission to copy files
+USER root
+
+# Copy the 'docker' command-line tool directly from the official Docker image.
+# This is a multi-stage build step that is clean and efficient.
+COPY --from=docker:latest /usr/local/bin/docker /usr/local/bin/docker
+
+# Switch back to the default jenkins user for security
+USER jenkins

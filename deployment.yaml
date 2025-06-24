@@ -1,3 +1,4 @@
+
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -16,63 +17,93 @@ spec:
     spec:
       # InitContainers run and complete before the main containers start.
       initContainers:
-        - name: git-cloner
-          # A simple image that contains git
-          image: alpine/git:latest
-          # The command to clone your public repository into the shared volume
-          command: ["/bin/sh", "-c"]
-          args:
-            - >
-              git clone https://github.com/lyvathanak/Final.git /app &&
-              chown -R 1000:1000 /app
-          # Mount the shared volume
-          volumeMounts:
-            - name: app-code
-              mountPath: /app
+      - name: git-cloner
+        # A simple image that contains git
+        image: alpine/git:latest
+        # The command to clone your public repository into the shared volume
+        command: ["/bin/sh", "-c"]
+        args:
+          - >
+            git clone https://github.com/lyvathanak/Final.git /app &&
+            chown -R 1000:1000 /app
+        # Mount the shared volume
+        volumeMounts:
+        - name: app-code
+          mountPath: /app
 
       # Main containers
       containers:
-        # Container 1: Web Server (PHP-FPM + NGINX)
-        - name: web-server
-          # A valid, public image for PHP 8.2 and NGINX
-          image: webdevops/php-nginx:8.2-alpine
-          ports:
-            - containerPort: 80 # This image exposes port 80 by default
-          # Mount the shared volume where the code was cloned
-          volumeMounts:
-            - name: app-code
-              mountPath: /app
+      # Container 1: Web Server (PHP-FPM + NGINX)
+      - name: web-server
+        # A valid, public image for PHP 8.2 and NGINX
+        image: webdevops/php-nginx:8.2-alpine
+        # Mount the shared volume where the code was cloned
+        volumeMounts:
+        - name: app-code
+          mountPath: /app
+        ports:
+        - containerPort: 80   # Port for the website
+        - containerPort: 22   # Port for SSH
 
-        # Container 2: MySQL Database
-        - name: mysql-db
-          image: mysql:8.0
-          ports:
-            - containerPort: 3306
-          env:
-            - name: MYSQL_DATABASE
-              value: "lyvathanak-db"
-            - name: MYSQL_ROOT_PASSWORD
-              value: "Hello@123"
-          volumeMounts:
-            - name: mysql-data
-              mountPath: /var/lib/mysql
+      # Container 2: MySQL Database
+      - name: mysql-db
+        image: mysql:8.0
+        ports:
+        - containerPort: 3306
+        env:
+        - name: MYSQL_DATABASE
+          value: "lyvathanak-db"
+        - name: MYSQL_ROOT_PASSWORD
+          value: "Hello@123"
+        volumeMounts:
+        - name: mysql-data
+          mountPath: /var/lib/mysql
+
+      # Container 3: phpMyAdmin UI
+      - name: phpmyadmin-ui
+        image: phpmyadmin/phpmyadmin
+        ports:
+        - containerPort: 80
+        env:
+        # Tells phpMyAdmin how to connect to the database container
+        - name: PMA_HOST
+          value: 127.0.0.1 # In the same pod, they can talk via localhost
+        - name: PMA_PORT
+          value: "3306"
+        - name: MYSQL_ROOT_PASSWORD
+          value: "Hello@123"
 
       # Volumes to share data between containers
       volumes:
-        - name: app-code
-          emptyDir: {}
-        - name: mysql-data
-          emptyDir: {}
+      - name: app-code
+        emptyDir: {}
+      - name: mysql-data
+        emptyDir: {}
 ---
+# This Service is now a LoadBalancer to expose ports on localhost
 apiVersion: v1
 kind: Service
 metadata:
   name: laravel-app-service
 spec:
+  # This type tells Docker Desktop to create port mappings from your localhost
+  type: LoadBalancer
   selector:
     app: laravel
   ports:
-    - protocol: TCP
-      port: 80
-      targetPort: 80
-  type: ClusterIP
+    - name: website
+      protocol: TCP
+      port: 8090        # External port on your localhost
+      targetPort: 80      # Target port on the web-server container
+    - name: database
+      protocol: TCP
+      port: 3306        # External port on your localhost
+      targetPort: 3306    # Target port on the mysql-db container
+    - name: ssh
+      protocol: TCP
+      port: 22          # External port on your localhost
+      targetPort: 22      # Target port on the web-server container
+    - name: phpmyadmin
+      protocol: TCP
+      port: 8081        # Expose phpMyAdmin on a separate port
+      targetPort: 80      # Target port on the phpmyadmin-ui container
