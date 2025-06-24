@@ -25,11 +25,7 @@ pipeline {
         stage('Prepare Workspace') {
             agent any
             steps {
-                script {
-                    echo "Cleaning up workspace before build..."
-                    // The cleanWs() step deletes all files from the previous build.
-                    cleanWs()
-                }
+                cleanWs()
             }
         }
 
@@ -37,11 +33,7 @@ pipeline {
         stage('Checkout Code') {
             agent any
             steps {
-                script {
-                    echo "Checking out code from branch: ${params.BRANCH}"
-                    // The git step checks out the code from your repository.
-                    git branch: params.BRANCH, url: 'https://github.com/lyvathanak/Final.git'
-                }
+                git branch: params.BRANCH, url: 'https://github.com/lyvathanak/Final.git'
             }
         }
 
@@ -60,11 +52,11 @@ pipeline {
                     echo "Starting build and test process..."
                     // Sequence of commands to build and test the application
                     sh '''
-                        # Install git to add safe directory, and nodejs/npm
-                        apk add --no-cache git nodejs npm
+                        # Install required tools: git, nodejs/npm, and the Docker client
+                        apk add --no-cache git nodejs npm docker-cli
 
-                        # Add git safe directory to avoid ownership errors
-                        git config --global --add safe.directory /var/jenkins_home/workspace/Final_main
+                        # Use the Jenkins WORKSPACE environment variable for reliability
+                        git config --global --add safe.directory ${WORKSPACE}
 
                         # Install composer dependencies, including dev for testing
                         composer install --no-interaction --optimize-autoloader
@@ -72,7 +64,7 @@ pipeline {
                         # Create environment file and generate app key
                         cp .env.example .env
                         php artisan key:generate
-
+                        
                         # Install NPM dependencies and build assets
                         npm install
                         npm run build
@@ -92,12 +84,7 @@ pipeline {
         stage('Deploy with Ansible') {
             agent any
             steps {
-                script {
-                    echo "Running Ansible playbook to deploy..."
-                    // Execute the ansible-playbook command.
-                    // Jenkins needs to be able to find the kubectl command.
-                    sh 'ansible-playbook deploy-playbook.yaml'
-                }
+                sh 'ansible-playbook deploy-playbook.yaml'
             }
         }
     }
@@ -106,15 +93,21 @@ pipeline {
     post {
         // This 'always' block runs regardless of build success or failure.
         always {
-            script {
-                echo "Build finished. Archiving artifacts..."
+            // This agent block provides a context for the post-build steps to run in.
+            agent any
+            steps {
+                echo "Archiving artifacts..."
+                // Unstash the test output to make it available for archiving
+                unstash name: 'test-output'
                 // Archive the database backup and the built output files for download.
                 archiveArtifacts artifacts: 'backup.sql, test-output.txt', followSymlinks: false
             }
         }
         // This 'failure' block only runs if the build fails at any stage.
         failure {
-            script {
+            // This agent block provides a context for the post-build steps to run in.
+            agent any
+            steps {
                 echo "Build FAILED. Sending notification email..."
                 // Get the email of the person who made the last commit
                 def commitAuthorEmail = sh(returnStdout: true, script: 'git log -1 --pretty=format:%ae').trim()
@@ -131,4 +124,3 @@ pipeline {
         }
     }
 }
-
