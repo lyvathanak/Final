@@ -93,33 +93,29 @@ pipeline {
     post {
         // This 'always' block runs regardless of build success or failure.
         always {
-            // This agent block provides a context for the post-build steps to run in.
-            agent any
             steps {
+                // The steps here run on an available agent.
                 echo "Archiving artifacts..."
-                // Unstash the test output to make it available for archiving
                 unstash name: 'test-output'
-                // Archive the database backup and the built output files for download.
                 archiveArtifacts artifacts: 'backup.sql, test-output.txt', followSymlinks: false
             }
         }
         // This 'failure' block only runs if the build fails at any stage.
         failure {
-            // This agent block provides a context for the post-build steps to run in.
-            agent any
             steps {
-                echo "Build FAILED. Sending notification email..."
-                // Get the email of the person who made the last commit
-                def commitAuthorEmail = sh(returnStdout: true, script: 'git log -1 --pretty=format:%ae').trim()
-                // Send an email notification
-                emailext (
-                    subject: "BUILD FAILED: Job '${env.JOB_NAME}' - Build #${env.BUILD_NUMBER}",
-                    body: """<p>A build has failed for job: <b>${env.JOB_NAME}</b></p>
-                           <p>Build Number: ${env.BUILD_NUMBER}</p>
-                           <p>Committer: ${commitAuthorEmail}</p>
-                           <p>Check console output at: <a href='${env.BUILD_URL}'>${env.JOB_NAME} [${env.BUILD_NUMBER}]</a></p>""",
-                    to: "srengty@gmail.com, ${commitAuthorEmail}"
-                )
+                // The logic to get email and send must be in a 'script' block.
+                script {
+                    echo "Build FAILED. Sending notification email..."
+                    def commitAuthorEmail = sh(returnStdout: true, script: 'git log -1 --pretty=format:%ae').trim()
+                    emailext (
+                        subject: "BUILD FAILED: Job '${env.JOB_NAME}' - Build #${env.BUILD_NUMBER}",
+                        body: """<p>A build has failed for job: <b>${env.JOB_NAME}</b></p>
+                               <p>Build Number: ${env.BUILD_NUMBER}</p>
+                               <p>Committer: ${commitAuthorEmail}</p>
+                               <p>Check console output at: <a href='${env.BUILD_URL}'>${env.JOB_NAME} [${env.BUILD_NUMBER}]</a></p>""",
+                        to: "srengty@gmail.com, ${commitAuthorEmail}"
+                    )
+                }
             }
         }
     }
