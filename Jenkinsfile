@@ -1,6 +1,3 @@
-// Jenkinsfile
-// This declarative pipeline automates the build, test, and deployment of the Laravel application.
-
 pipeline {
     // Agent 'none' means the main pipeline doesn't use a specific environment,
     // but each stage will define its own.
@@ -87,12 +84,8 @@ pipeline {
         stage('Deploy with Ansible') {
             agent any
             steps {
-                // We need to install the Docker client here as well so Ansible can find kubectl
                 // This command runs inside the main Jenkins agent
-                sh '''
-                    apk add --no-cache docker-cli
-                    ansible-playbook deploy-playbook.yaml
-                '''
+                sh 'ansible-playbook deploy-playbook.yaml'
             }
         }
     }
@@ -105,7 +98,7 @@ pipeline {
             steps {
                 echo "Archiving artifacts..."
                 unstash name: 'test-output'
-                archiveArtifacts artifacts: 'backup.sql, test-output.txt', followSymlinks: false
+                archiveArtifacts artifacts: 'backup.sql, test-output.txt', allowEmptyArchive: true, followSymlinks: false
             }
         }
         // This 'failure' block only runs if the build fails at any stage.
