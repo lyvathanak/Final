@@ -1,6 +1,3 @@
-# deployment.yaml
-# Kubernetes configuration for deploying the Laravel application and MySQL database.
-
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -17,57 +14,56 @@ spec:
       labels:
         app: laravel
     spec:
-      containers:
-        # Container 1: Web Server (PHP-FPM + NGINX)
-        - name: web-server
-          # Using a pre-built image with PHP 8.2, NGINX, and necessary extensions.
-          # This image also includes Git for cloning the repository.
-          image: yi-ge/laravel-nginx:1.0
-          ports:
-            - containerPort: 8080 # Port for the website
-            - containerPort: 22 # Port for SSH (for potential debugging)
-          volumeMounts:
-            - name: app-code
-              mountPath: /var/www/html
-          # The command to run when the container starts.
-          # It clones your Laravel project from GitHub into the web root.
+      # InitContainers run and complete before the main containers start.
+      initContainers:
+        - name: git-cloner
+          # A simple image that contains git
+          image: alpine/git:latest
+          # The command to clone your public repository into the shared volume
           command: ["/bin/sh", "-c"]
           args:
             - >
-              git clone https://github.com/lyvathanak/Final.git /var/www/html &&
-              chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache &&
-              nginx &&
-              php-fpm
+              git clone https://github.com/lyvathanak/Final.git /app &&
+              chown -R 1000:1000 /app
+          # Mount the shared volume
+          volumeMounts:
+            - name: app-code
+              mountPath: /app
+
+      # Main containers
+      containers:
+        # Container 1: Web Server (PHP-FPM + NGINX)
+        - name: web-server
+          # A valid, public image for PHP 8.2 and NGINX
+          image: webdevops/php-nginx:8.2-alpine
+          ports:
+            - containerPort: 80 # This image exposes port 80 by default
+          # Mount the shared volume where the code was cloned
+          volumeMounts:
+            - name: app-code
+              mountPath: /app
 
         # Container 2: MySQL Database
         - name: mysql-db
           image: mysql:8.0
           ports:
             - containerPort: 3306
-          # Environment variables to configure the MySQL container.
-          # CORRECTED KEY: 'env' instead of 'environment'
           env:
             - name: MYSQL_DATABASE
               value: "lyvathanak-db"
             - name: MYSQL_ROOT_PASSWORD
               value: "Hello@123"
-            - name: MYSQL_USER
-              value: "root"
-            - name: MYSQL_PASSWORD
-              value: "Hello@123"
           volumeMounts:
             - name: mysql-data
               mountPath: /var/lib/mysql
 
-      # Volumes to persist data for the application code and database
+      # Volumes to share data between containers
       volumes:
         - name: app-code
           emptyDir: {}
         - name: mysql-data
           emptyDir: {}
-
 ---
-# This service was created successfully before, but we include it for completeness.
 apiVersion: v1
 kind: Service
 metadata:
@@ -77,6 +73,6 @@ spec:
     app: laravel
   ports:
     - protocol: TCP
-      port: 80 # The port the service will be available on inside the cluster
-      targetPort: 8080 # The port on the web-server container
-  type: ClusterIP # Use LoadBalancer if you are on a cloud provider like GKE, EKS, AKS
+      port: 80
+      targetPort: 80
+  type: ClusterIP
