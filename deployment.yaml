@@ -1,0 +1,82 @@
+# deployment.yaml
+# Kubernetes configuration for deploying the Laravel application and MySQL database.
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: laravel-app-deployment
+  labels:
+    app: laravel
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: laravel
+  template:
+    metadata:
+      labels:
+        app: laravel
+    spec:
+      containers:
+        # Container 1: Web Server (PHP-FPM + NGINX)
+        - name: web-server
+          # Using a pre-built image with PHP 8.2, NGINX, and necessary extensions.
+          # This image also includes Git for cloning the repository.
+          image: yi-ge/laravel-nginx:1.0
+          ports:
+            - containerPort: 8080 # Port for the website
+            - containerPort: 22 # Port for SSH (for potential debugging)
+          volumeMounts:
+            - name: app-code
+              mountPath: /var/www/html
+          # The command to run when the container starts.
+          # It clones your Laravel project from GitHub into the web root.
+          command: ["/bin/sh", "-c"]
+          args:
+            - >
+              git clone https://github.com/lyvathanak/Final.git /var/www/html &&
+              chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache &&
+              nginx &&
+              php-fpm
+
+        # Container 2: MySQL Database
+        - name: mysql-db
+          image: mysql:8.0
+          ports:
+            - containerPort: 3306
+          # Environment variables to configure the MySQL container.
+          # CORRECTED KEY: 'env' instead of 'environment'
+          env:
+            - name: MYSQL_DATABASE
+              value: "lyvathanak-db"
+            - name: MYSQL_ROOT_PASSWORD
+              value: "Hello@123"
+            - name: MYSQL_USER
+              value: "root"
+            - name: MYSQL_PASSWORD
+              value: "Hello@123"
+          volumeMounts:
+            - name: mysql-data
+              mountPath: /var/lib/mysql
+
+      # Volumes to persist data for the application code and database
+      volumes:
+        - name: app-code
+          emptyDir: {}
+        - name: mysql-data
+          emptyDir: {}
+
+---
+# This service was created successfully before, but we include it for completeness.
+apiVersion: v1
+kind: Service
+metadata:
+  name: laravel-app-service
+spec:
+  selector:
+    app: laravel
+  ports:
+    - protocol: TCP
+      port: 80 # The port the service will be available on inside the cluster
+      targetPort: 8080 # The port on the web-server container
+  type: ClusterIP # Use LoadBalancer if you are on a cloud provider like GKE, EKS, AKS
