@@ -1,3 +1,4 @@
+
 pipeline {
     // Agent 'none' means the main pipeline doesn't use a specific environment,
     // but each stage will define its own.
@@ -52,7 +53,7 @@ pipeline {
                     echo "Starting build and test process..."
                     // Sequence of commands to build and test the application
                     sh '''
-                        # Install required tools: git, nodejs/npm
+                        # Install git to add safe directory, and nodejs/npm
                         apk add --no-cache git nodejs npm
 
                         # Use the Jenkins WORKSPACE environment variable for reliability
@@ -84,11 +85,7 @@ pipeline {
         stage('Deploy with Ansible') {
             agent any
             steps {
-                // We need to install the Docker client here as well so Ansible can find kubectl
-                sh '''
-                    apk add --no-cache docker-cli
-                    ansible-playbook deploy-playbook.yaml
-                '''
+                sh 'ansible-playbook deploy-playbook.yaml'
             }
         }
     }
