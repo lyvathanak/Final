@@ -1,3 +1,5 @@
+// Jenkinsfile
+// This declarative pipeline automates the build, test, and deployment of the Laravel application.
 
 pipeline {
     // Agent 'none' means the main pipeline doesn't use a specific environment,
@@ -53,7 +55,7 @@ pipeline {
                     echo "Starting build and test process..."
                     // Sequence of commands to build and test the application
                     sh '''
-                        # Install git to add safe directory, and nodejs/npm
+                        # Install required tools: git, nodejs/npm
                         apk add --no-cache git nodejs npm
 
                         # Use the Jenkins WORKSPACE environment variable for reliability
@@ -85,7 +87,12 @@ pipeline {
         stage('Deploy with Ansible') {
             agent any
             steps {
-                sh 'ansible-playbook deploy-playbook.yaml'
+                // We need to install the Docker client here as well so Ansible can find kubectl
+                // This command runs inside the main Jenkins agent
+                sh '''
+                    apk add --no-cache docker-cli
+                    ansible-playbook deploy-playbook.yaml
+                '''
             }
         }
     }
