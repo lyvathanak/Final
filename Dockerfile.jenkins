@@ -1,12 +1,15 @@
-# Use the official Jenkins Long-Term Support image as a base
 FROM jenkins/jenkins:lts-jdk17
 
-# Temporarily switch to the root user to have permission to copy files
+# Switch to the root user to have permission to install software and modify groups
 USER root
 
-# Copy the 'docker' command-line tool directly from the official Docker image.
-# This is a multi-stage build step that is clean and efficient.
-COPY --from=docker:latest /usr/local/bin/docker /usr/local/bin/docker
+# This is the crucial part. It reads the group ID from the Docker socket file,
+# creates a new group inside the container with that same ID,
+# and adds the 'jenkins' user to that group.
+# This gives the jenkins user permission to use Docker.
+RUN DOCKER_SOCKET_GID=$(stat -c '%g' /var/run/docker.sock) && \
+    addgroup --gid ${DOCKER_SOCKET_GID} docker && \
+    adduser jenkins docker
 
-# Switch back to the default jenkins user for security
+# Switch back to the default jenkins user
 USER jenkins
