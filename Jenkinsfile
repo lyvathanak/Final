@@ -52,8 +52,8 @@ pipeline {
                     echo "Starting build and test process..."
                     // Sequence of commands to build and test the application
                     sh '''
-                        # Install required tools: git, nodejs/npm, and the Docker client
-                        apk add --no-cache git nodejs npm docker-cli
+                        # Install git to add safe directory, and nodejs/npm
+                        apk add --no-cache git nodejs npm
 
                         # Use the Jenkins WORKSPACE environment variable for reliability
                         git config --global --add safe.directory ${WORKSPACE}
@@ -93,8 +93,8 @@ pipeline {
     post {
         // This 'always' block runs regardless of build success or failure.
         always {
+            // The 'steps' block must be a direct child of 'always'
             steps {
-                // The steps here run on an available agent.
                 echo "Archiving artifacts..."
                 unstash name: 'test-output'
                 archiveArtifacts artifacts: 'backup.sql, test-output.txt', followSymlinks: false

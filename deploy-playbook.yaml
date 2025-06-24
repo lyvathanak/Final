@@ -1,0 +1,116 @@
+- name: Deploy and Test Laravel Application in Kubernetes
+  hosts: localhost # The playbook is run from your local machine
+  gather_facts: no
+  vars:
+    # Variable to hold the name of the running pod
+    laravel_pod_name: ""
+    # Variable for the Kubernetes namespace
+    k8s_namespace: "default"
+
+  tasks:
+    # Task 1: Find the running pod
+    - name: Get running Laravel pod info
+      kubernetes.core.k8s_info:
+        kind: Pod
+        namespace: "{{ k8s_namespace }}"
+        label_selectors:
+          - app = laravel
+        field_selectors:
+          - status.phase=Running
+      register: pod_list
+
+    # Task 2: Store the pod name in our variable for later use
+    - name: Set pod name fact
+      set_fact:
+        laravel_pod_name: "{{ pod_list.resources[0].metadata.name }}"
+      when: pod_list.resources | length > 0
+
+    - name: Fail if pod not found
+      fail:
+        msg: "No running Laravel pod found. Please check 'kubectl get pods'."
+      when: laravel_pod_name == ""
+
+    # --- Web Server Container Tasks ---
+
+    - name: 1. Discard local changes and pull latest code
+      kubernetes.core.k8s_exec:
+        namespace: "{{ k8s_namespace }}"
+        pod: "{{ laravel_pod_name }}"
+        container: web-server
+        command: 'sh -c "git config --global --add safe.directory /app && cd /app && git reset --hard HEAD && git pull origin main"'
+
+    - name: 2. Create .env file
+      kubernetes.core.k8s_exec:
+        namespace: "{{ k8s_namespace }}"
+        pod: "{{ laravel_pod_name }}"
+        container: web-server
+        command: 'sh -c "cd /app && cp .env.example .env"'
+
+    - name: 3. Install Composer dependencies (including dev)
+      kubernetes.core.k8s_exec:
+        namespace: "{{ k8s_namespace }}"
+        pod: "{{ laravel_pod_name }}"
+        container: web-server
+        command: composer install --no-interaction --optimize-autoloader -d /app
+
+    - name: 4. Generate Application Key
+      kubernetes.core.k8s_exec:
+        namespace: "{{ k8s_namespace }}"
+        pod: "{{ laravel_pod_name }}"
+        container: web-server
+        command: 'sh -c "cd /app && php artisan key:generate"'
+
+    - name: 5. Set correct folder permissions
+      kubernetes.core.k8s_exec:
+        namespace: "{{ k8s_namespace }}"
+        pod: "{{ laravel_pod_name }}"
+        container: web-server
+        command: 'sh -c "cd /app && chown -R 1000:1000 storage bootstrap/cache"'
+
+    - name: 6. Install nodejs and npm
+      kubernetes.core.k8s_exec:
+        namespace: "{{ k8s_namespace }}"
+        pod: "{{ laravel_pod_name }}"
+        container: web-server
+        command: 'sh -c "apk add --no-cache nodejs npm"'
+
+    - name: 7. Install NPM dependencies
+      kubernetes.core.k8s_exec:
+        namespace: "{{ k8s_namespace }}"
+        pod: "{{ laravel_pod_name }}"
+        container: web-server
+        command: 'sh -c "cd /app && npm install"'
+
+    - name: 8. Build frontend assets
+      kubernetes.core.k8s_exec:
+        namespace: "{{ k8s_namespace }}"
+        pod: "{{ laravel_pod_name }}"
+        container: web-server
+        command: 'sh -c "cd /app && npm run build"'
+
+    - name: 9. Prepare and run tests against SQLite database
+      kubernetes.core.k8s_exec:
+        namespace: "{{ k8s_namespace }}"
+        pod: "{{ laravel_pod_name }}"
+        container: web-server
+        # This is the corrected command
+        command: 'sh -c "cd /app && touch database/database.sqlite && php artisan migrate --force && php artisan test"'
+      register: test_output
+
+    - name: Display test output for screenshot
+      debug:
+        msg: "{{ test_output.stdout_lines }}"
+
+    # --- Database Container Tasks ---
+
+    - name: 10. Backup MySQL database
+      kubernetes.core.k8s_exec:
+        namespace: "{{ k8s_namespace }}"
+        pod: "{{ laravel_pod_name }}"
+        container: mysql-db
+        command: 'sh -c "mysqldump -u root -p''Hello@123'' lyvathanak-db > /tmp/backup.sql"'
+
+    - name: 11. Fetch the database backup file to your local machine
+      command: >
+        kubectl.exe cp "{{ k8s_namespace }}/{{ laravel_pod_name }}:/tmp/backup.sql" "./backup.sql" -c "mysql-db"
+      delegate_to: localhost
